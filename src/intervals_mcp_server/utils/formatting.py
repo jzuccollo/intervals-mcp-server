@@ -30,7 +30,7 @@ def format_activity_summary(activity: dict[str, Any]) -> str:
     if isinstance(feel, int):
         feel = f"{feel}/5"
 
-    return f"""
+    result = f"""
 Activity: {activity.get("name", "Unnamed")}
 ID: {activity.get("id", "N/A")}
 Type: {activity.get("type", "Unknown")}
@@ -95,6 +95,12 @@ Device: {activity.get("device_name", "N/A")}
 Power Meter: {activity.get("power_meter", "N/A")}
 File Type: {activity.get("file_type", "N/A")}
 """
+
+    strain_section = _format_strain_metrics(activity)
+    if strain_section:
+        result += f"\n{strain_section}\n"
+
+    return result
 
 
 def format_workout(workout: dict[str, Any]) -> str:
@@ -235,15 +241,53 @@ def _format_nutrition_hydration(entries: dict[str, Any]) -> list[str]:
     return nutrition_lines
 
 
+def _format_strain_metrics(entries: dict[str, Any], indent: str = "", include_heading: bool = True) -> str:
+    """Return a formatted strain metrics block if strain data is available."""
+
+    strain_score = entries.get("strain_score")
+    ss_cp = entries.get("ss_cp")
+    ss_w_prime = entries.get("ss_w_prime")
+    ss_p_max = entries.get("ss_p_max")
+
+    if all(value is None for value in (strain_score, ss_cp, ss_w_prime, ss_p_max)):
+        return ""
+
+    lines: list[str] = []
+    value_indent = indent
+    if include_heading:
+        lines.append(f"{indent}Strain Metrics:")
+        value_indent = indent + "  "
+
+    if strain_score is not None:
+        lines.append(f"{value_indent}Strain Score: {strain_score}")
+
+    if ss_cp is not None:
+        lines.append(f"{value_indent}CP Component: {ss_cp}")
+
+    if ss_w_prime is not None:
+        try:
+            w_prime_kj = float(ss_w_prime) / 1000
+            lines.append(f"{value_indent}W' Component: {w_prime_kj:.1f} kJ")
+        except (TypeError, ValueError):
+            lines.append(f"{value_indent}W' Component: {ss_w_prime}")
+
+    if ss_p_max is not None:
+        lines.append(f"{value_indent}Pmax Component: {ss_p_max}")
+
+    return "\n".join(lines)
+
+
 def format_wellness_entry(entries: dict[str, Any]) -> str:
     """Format wellness entry data into a readable string.
 
-    Formats various wellness metrics including training metrics, vital signs,
-    sleep data, menstrual tracking, subjective feelings, nutrition, and activity.
+    Formats various wellness metrics including training metrics, strain scores,
+    vital signs, sleep data, menstrual tracking, subjective feelings, nutrition,
+    and activity.
 
     Args:
         entries: Dictionary containing wellness data fields such as:
             - Training metrics: ctl, atl, rampRate, ctlLoad, atlLoad
+            - Strain metrics: strain_score, ss_cp, ss_w_prime, ss_p_max
             - Vital signs: weight, restingHR, hrv, hrvSDNN, avgSleepingHR, spO2,
               systolic, diastolic, respiration, bloodGlucose, lactate, vo2max,
               bodyFat, abdomen, baevskySI
@@ -265,6 +309,11 @@ def format_wellness_entry(entries: dict[str, Any]) -> str:
     if training_metrics:
         lines.append("Training Metrics:")
         lines.extend(training_metrics)
+        lines.append("")
+
+    strain_section = _format_strain_metrics(entries)
+    if strain_section:
+        lines.append(strain_section)
         lines.append("")
 
     sport_info_list = _format_sport_info(entries)
@@ -326,11 +375,17 @@ def format_event_summary(event: dict[str, Any]) -> str:
     event_id = event.get("id", "N/A")
     event_desc = event.get("description", "No description")
 
-    return f"""Date: {event_date}
+    summary = f"""Date: {event_date}
 ID: {event_id}
 Type: {event_type}
 Name: {event_name}
 Description: {event_desc}"""
+
+    strain_section = _format_strain_metrics(event)
+    if strain_section:
+        summary += f"\n{strain_section}"
+
+    return summary
 
 
 def format_event_details(event: dict[str, Any]) -> str:
@@ -342,6 +397,10 @@ ID: {event.get("id", "N/A")}
 Date: {event.get("date", "Unknown")}
 Name: {event.get("name", "Unnamed")}
 Description: {event.get("description", "No description")}"""
+
+    strain_section = _format_strain_metrics(event)
+    if strain_section:
+        event_details += f"\n\n{strain_section}"
 
     # Check if it's a workout-based event
     if "workout" in event and event["workout"]:
@@ -443,6 +502,10 @@ Elevation & Environment:
 
 """
 
+                        strain_section = _format_strain_metrics(interval, indent="  ")
+                        if strain_section:
+                                result += f"{strain_section}\n\n"
+
     # Format interval groups
     if "icu_groups" in intervals_data and intervals_data["icu_groups"]:
         result += "Interval Groups:\n\n"
@@ -460,5 +523,9 @@ Speed: Avg {group.get("average_speed", 0)}, Max {group.get("max_speed", 0)} m/s
 Cadence: Avg {group.get("average_cadence", 0)}, Max {group.get("max_cadence", 0)} rpm
 
 """
+
+            group_strain = _format_strain_metrics(group, indent="  ")
+            if group_strain:
+                result += f"{group_strain}\n\n"
 
     return result

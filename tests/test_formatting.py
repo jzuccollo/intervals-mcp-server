@@ -27,10 +27,17 @@ def test_format_activity_summary():
         "startTime": "2024-01-01T08:00:00Z",
         "distance": 1000,
         "duration": 3600,
+        "strain_score": 80,
+        "ss_cp": 65,
+        "ss_w_prime": 20000,
+        "ss_p_max": 12,
     }
     result = format_activity_summary(data)
     assert "Activity: Morning Ride" in result
     assert "ID: 1" in result
+    assert "Strain Metrics:" in result
+    assert "Strain Score: 80" in result
+    assert "W' Component: 20.0 kJ" in result
 
 
 def test_format_workout():
@@ -73,10 +80,15 @@ def test_format_event_summary():
         "name": "Event1",
         "description": "desc",
         "race": True,
+        "strain_score": 70,
+        "ss_cp": 50,
+        "ss_w_prime": 15000,
+        "ss_p_max": 10,
     }
     summary = format_event_summary(event)
     assert "Date: 2024-01-01" in summary
     assert "Type: Race" in summary
+    assert "Strain Score: 70" in summary
 
 
 def test_format_event_details():
@@ -99,10 +111,16 @@ def test_format_event_details():
         "priority": "A",
         "result": "1st",
         "calendar": {"name": "Main"},
+        "strain_score": 60,
+        "ss_cp": 45,
+        "ss_w_prime": 10000,
+        "ss_p_max": 8,
     }
     details = format_event_details(event)
     assert "Event Details:" in details
     assert "Workout Information:" in details
+    assert "Strain Metrics:" in details
+    assert "W' Component: 10.0 kJ" in details
 
 
 def test_format_intervals():
@@ -112,3 +130,5 @@ def test_format_intervals():
     result = format_intervals(INTERVALS_DATA)
     assert "Intervals Analysis:" in result
     assert "Rep 1" in result
+    assert "Strain Score: 72" in result
+    assert "W' Component: 15.0 kJ" in result

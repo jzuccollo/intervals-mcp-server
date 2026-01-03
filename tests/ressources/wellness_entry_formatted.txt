@@ -8,6 +8,12 @@ Training Metrics:
 - CTL Load: 299
 - ATL Load: 299
 
+Strain Metrics:
+  Strain Score: 75
+  CP Component: 60
+  W' Component: 18.0 kJ
+  Pmax Component: 15
+
 Sport-Specific Info:
 - Ride: eFTP = 282.85992
 

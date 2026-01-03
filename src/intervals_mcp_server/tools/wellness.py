@@ -24,6 +24,10 @@ async def get_wellness_data(
 ) -> str:
     """Get wellness data for an athlete from Intervals.icu
 
+    Returns formatted wellness entries including training metrics (CTL, ATL),
+    strain scores (aerobic, glycolytic, neuromuscular components), vital signs,
+    sleep data, subjective feelings, and other wellness indicators.
+
     Args:
         athlete_id: The Intervals.icu athlete ID (optional, will use ATHLETE_ID from .env if not provided)
         api_key: The Intervals.icu API key (optional, will use API_KEY from .env if not provided)

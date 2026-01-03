@@ -5,6 +5,10 @@
   "rampRate": 6.997368,
   "ctlLoad": 299,
   "atlLoad": 299,
+  "strain_score": 75,
+  "ss_cp": 60,
+  "ss_w_prime": 18000,
+  "ss_p_max": 15,
   "sportInfo": [
     {
       "type": "Ride",

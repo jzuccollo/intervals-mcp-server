@@ -27,6 +27,10 @@ INTERVALS_DATA = {
             "max_cadence": 100,
             "average_speed": 6,
             "max_speed": 8,
+            "strain_score": 72,
+            "ss_cp": 55,
+            "ss_w_prime": 15000,
+            "ss_p_max": 18,
         }
     ],
 }
