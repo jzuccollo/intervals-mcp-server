@@ -29,7 +29,7 @@ INTERVALS_DATA = {
             "max_speed": 8,
             "strain_score": 72,
             "ss_cp": 55,
-            "ss_w_prime": 15000,
+            "ss_w_prime": 15.0,  # API returns in kJ, not joules
             "ss_p_max": 18,
         }
     ],

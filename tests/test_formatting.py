@@ -29,7 +29,7 @@ def test_format_activity_summary():
         "duration": 3600,
         "strain_score": 80,
         "ss_cp": 65,
-        "ss_w_prime": 20000,
+        "ss_w_prime": 20.0,  # API returns in kJ
         "ss_p_max": 12,
     }
     result = format_activity_summary(data)
@@ -82,7 +82,7 @@ def test_format_event_summary():
         "race": True,
         "strain_score": 70,
         "ss_cp": 50,
-        "ss_w_prime": 15000,
+        "ss_w_prime": 15.0,  # API returns in kJ
         "ss_p_max": 10,
     }
     summary = format_event_summary(event)
@@ -113,7 +113,7 @@ def test_format_event_details():
         "calendar": {"name": "Main"},
         "strain_score": 60,
         "ss_cp": 45,
-        "ss_w_prime": 10000,
+        "ss_w_prime": 10.0,  # API returns in kJ
         "ss_p_max": 8,
     }
     details = format_event_details(event)

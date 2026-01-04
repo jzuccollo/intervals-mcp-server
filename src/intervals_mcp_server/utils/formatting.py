@@ -266,7 +266,8 @@ def _format_strain_metrics(entries: dict[str, Any], indent: str = "", include_he
 
     if ss_w_prime is not None:
         try:
-            w_prime_kj = float(ss_w_prime) / 1000
+            # API returns ss_w_prime already in kJ, not joules
+            w_prime_kj = float(ss_w_prime)
             lines.append(f"{value_indent}W' Component: {w_prime_kj:.1f} kJ")
         except (TypeError, ValueError):
             lines.append(f"{value_indent}W' Component: {ss_w_prime}")
@@ -502,9 +503,9 @@ Elevation & Environment:
 
 """
 
-                        strain_section = _format_strain_metrics(interval, indent="  ")
-                        if strain_section:
-                                result += f"{strain_section}\n\n"
+            strain_section = _format_strain_metrics(interval, indent="  ")
+            if strain_section:
+                result += f"{strain_section}\n\n"
 
     # Format interval groups
     if "icu_groups" in intervals_data and intervals_data["icu_groups"]:
