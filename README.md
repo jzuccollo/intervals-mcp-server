@@ -69,6 +69,7 @@ ATHLETE_ID=your_athlete_id_here
 #### Finding your Athlete ID
 
 Your athlete ID is typically visible in the URL when you're logged into Intervals.icu. It looks like:
+
 - `https://intervals.icu/athlete/i12345/...` where `i12345` is your athlete ID
 
 ## Updating
@@ -115,7 +116,7 @@ To use this server with Claude Desktop, you need to add it to your Claude Deskto
 mcp install src/intervals_mcp_server/server.py --name "Intervals.icu" --with-editable . --env-file .env
 ```
 
-2. If you open your Claude Desktop App configuration file `claude_desktop_config.json`, it should look like this:
+1. If you open your Claude Desktop App configuration file `claude_desktop_config.json`, it should look like this:
 
 ```json
 {
@@ -155,7 +156,7 @@ If you observe the following error messages when you open Claude Desktop, includ
 2025-04-28T10:21:11.481Z [info] [Intervals.icu MCP Server] Client transport closed
 ```
 
-3. Restart Claude Desktop.
+1. Restart Claude Desktop.
 
 ### 2. Use the MCP server with Claude
 
