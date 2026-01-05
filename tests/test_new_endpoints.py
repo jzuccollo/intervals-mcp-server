@@ -17,6 +17,8 @@ os.environ.setdefault("ATHLETE_ID", "i1")
 from intervals_mcp_server.server import (  # pylint: disable=wrong-import-position
     get_power_curve,
     get_athlete_settings,
+    get_strain_pmc,
+    get_energy_system_balance,
 )
 
 
@@ -252,3 +254,211 @@ def test_get_power_curve_error_handling(monkeypatch):
     result = asyncio.run(get_power_curve(athlete_id="1"))
     assert "Error" in result
     assert "API Key invalid" in result
+
+
+def test_get_strain_pmc_with_activities(monkeypatch):
+    """
+    Test get_strain_pmc calculates PMC correctly with sample activities.
+    """
+    sample_activities = [
+        {
+            "id": "1",
+            "start_date": "2024-01-01",
+            "name": "Endurance",
+            "ss_cp": 45.0,
+            "ss_w_prime": 2.5,
+            "ss_p_max": 0.8,
+        },
+        {
+            "id": "2",
+            "start_date": "2024-01-02",
+            "name": "VO2max",
+            "ss_cp": 30.0,
+            "ss_w_prime": 5.0,
+            "ss_p_max": 1.2,
+        },
+        {
+            "id": "3",
+            "start_date": "2024-01-03",
+            "name": "Sweet Spot",
+            "ss_cp": 50.0,
+            "ss_w_prime": 1.5,
+            "ss_p_max": 0.5,
+        },
+    ]
+
+    async def fake_request(*_args, **_kwargs):
+        return sample_activities
+
+    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
+    monkeypatch.setattr(
+        "intervals_mcp_server.tools.strain_pmc.make_intervals_request", fake_request
+    )
+
+    result = asyncio.run(get_strain_pmc(athlete_id="1", as_of_date="2024-01-03"))
+    assert "Strain-Based PMC" in result
+    assert "Aerobic (SSCP)" in result
+    assert "Glycolytic (SSW)" in result
+    assert "Neuromuscular (SSPmax)" in result
+    assert "CTL" in result
+    assert "ATL" in result
+    assert "TSB" in result
+
+
+def test_get_strain_pmc_no_activities(monkeypatch):
+    """
+    Test get_strain_pmc handles empty activity list gracefully.
+    """
+
+    async def fake_request(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
+    monkeypatch.setattr(
+        "intervals_mcp_server.tools.strain_pmc.make_intervals_request", fake_request
+    )
+
+    result = asyncio.run(get_strain_pmc(athlete_id="1"))
+    assert "Strain-Based PMC" in result
+    assert "0.0" in result  # CTL/ATL should be 0
+
+
+def test_get_strain_pmc_invalid_date(monkeypatch):
+    """
+    Test get_strain_pmc handles invalid date format.
+    """
+
+    async def fake_request(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
+    monkeypatch.setattr(
+        "intervals_mcp_server.tools.strain_pmc.make_intervals_request", fake_request
+    )
+
+    result = asyncio.run(get_strain_pmc(athlete_id="1", as_of_date="invalid-date"))
+    assert "Error" in result
+    assert "YYYY-MM-DD" in result
+
+
+def test_get_energy_system_balance_with_activities(monkeypatch):
+    """
+    Test get_energy_system_balance calculates distribution correctly.
+    """
+    sample_activities = [
+        {
+            "id": "1",
+            "start_date": "2024-01-08",
+            "name": "Endurance",
+            "ss_cp": 100.0,
+            "ss_w_prime": 5.0,
+            "ss_p_max": 2.0,
+        },
+        {
+            "id": "2",
+            "start_date": "2024-01-09",
+            "name": "VO2max",
+            "ss_cp": 40.0,
+            "ss_w_prime": 15.0,
+            "ss_p_max": 3.0,
+        },
+        {
+            "id": "3",
+            "start_date": "2024-01-10",
+            "name": "Sweet Spot",
+            "ss_cp": 80.0,
+            "ss_w_prime": 3.0,
+            "ss_p_max": 1.5,
+        },
+    ]
+
+    async def fake_request(*_args, **_kwargs):
+        return sample_activities
+
+    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
+    monkeypatch.setattr(
+        "intervals_mcp_server.tools.energy_balance.make_intervals_request", fake_request
+    )
+
+    result = asyncio.run(get_energy_system_balance(athlete_id="1", days=14))
+    assert "Energy System Balance" in result
+    assert "Distribution:" in result
+    assert "Aerobic" in result
+    assert "Glycolytic" in result
+    assert "Neuromuscular" in result
+    assert "%" in result  # Should show percentages
+
+
+def test_get_energy_system_balance_no_activities(monkeypatch):
+    """
+    Test get_energy_system_balance handles empty activity list gracefully.
+    """
+
+    async def fake_request(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
+    monkeypatch.setattr(
+        "intervals_mcp_server.tools.energy_balance.make_intervals_request", fake_request
+    )
+
+    result = asyncio.run(get_energy_system_balance(athlete_id="1", days=7))
+    assert "Energy System Balance" in result
+    assert "No strain data" in result
+
+
+def test_get_energy_system_balance_custom_dates(monkeypatch):
+    """
+    Test get_energy_system_balance respects custom date range.
+    """
+    sample_activities = [
+        {
+            "id": "1",
+            "start_date": "2024-01-05",
+            "name": "Ride",
+            "ss_cp": 75.0,
+            "ss_w_prime": 10.0,
+            "ss_p_max": 2.5,
+        }
+    ]
+
+    async def fake_request(*_args, **_kwargs):
+        # Verify that custom date range is used
+        params = _kwargs.get("params", {})
+        assert params.get("oldest") == "2024-01-01"
+        assert params.get("newest") == "2024-01-10"
+        return sample_activities
+
+    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
+    monkeypatch.setattr(
+        "intervals_mcp_server.tools.energy_balance.make_intervals_request", fake_request
+    )
+
+    result = asyncio.run(
+        get_energy_system_balance(
+            athlete_id="1",
+            start_date="2024-01-01",
+            end_date="2024-01-10",
+        )
+    )
+    assert "Energy System Balance" in result
+    assert "2024-01-01" in result
+    assert "2024-01-10" in result
+
+
+def test_get_energy_system_balance_error_handling(monkeypatch):
+    """
+    Test get_energy_system_balance handles API errors gracefully.
+    """
+
+    async def fake_request(*_args, **_kwargs):
+        return {"error": True, "message": "Authentication failed"}
+
+    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
+    monkeypatch.setattr(
+        "intervals_mcp_server.tools.energy_balance.make_intervals_request", fake_request
+    )
+
+    result = asyncio.run(get_energy_system_balance(athlete_id="1"))
+    assert "Error fetching activities" in result
+    assert "Authentication failed" in result
