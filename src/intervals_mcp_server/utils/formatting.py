@@ -241,7 +241,9 @@ def _format_nutrition_hydration(entries: dict[str, Any]) -> list[str]:
     return nutrition_lines
 
 
-def _format_strain_metrics(entries: dict[str, Any], indent: str = "", include_heading: bool = True) -> str:
+def _format_strain_metrics(
+    entries: dict[str, Any], indent: str = "", include_heading: bool = True
+) -> str:
     """Return a formatted strain metrics block if strain data is available."""
 
     strain_score = entries.get("strain_score")
@@ -528,5 +530,131 @@ Cadence: Avg {group.get("average_cadence", 0)}, Max {group.get("max_cadence", 0)
             group_strain = _format_strain_metrics(group, indent="  ")
             if group_strain:
                 result += f"{group_strain}\n\n"
+
+    return result
+
+
+def format_power_curve(power_data: dict[str, Any]) -> str:
+    """Format power curve (best efforts) data into a readable string.
+
+    Args:
+        power_data: Dictionary containing power curve data from Intervals.icu API.
+            Expected to contain keys like "60", "300", etc. with values for watts and W/kg.
+
+    Returns:
+        A formatted string representation of the power curve data.
+    """
+    result = "Power Curve:\n\n"
+
+    # Standard durations to display, with their labels
+    durations = [
+        ("1", "1s"),
+        ("5", "5s"),
+        ("10", "10s"),
+        ("15", "15s"),
+        ("30", "30s"),
+        ("60", "1m"),
+        ("120", "2m"),
+        ("300", "5m"),
+        ("600", "10m"),
+        ("1200", "20m"),
+        ("3600", "60m"),
+    ]
+
+    result += "Duration | Power (W) | Power (W/kg)\n"
+    result += "----------|-----------|------------\n"
+
+    for seconds, label in durations:
+        if seconds in power_data:
+            entry = power_data[seconds]
+            if isinstance(entry, dict):
+                watts = entry.get("watts", "N/A")
+                watts_kg = entry.get("wkg", "N/A")
+            else:
+                watts = entry
+                watts_kg = "N/A"
+            result += f"{label:8} | {str(watts):9} | {watts_kg}\n"
+
+    return result
+
+
+def format_athlete_settings(settings: dict[str, Any]) -> str:
+    """Format athlete settings data into a readable string.
+
+    Args:
+        settings: Dictionary containing athlete settings from Intervals.icu API.
+            Expected to contain power model parameters (FTP, W', Pmax),
+            heart rate settings (LTHR, max HR), and other athlete metadata.
+
+    Returns:
+        A formatted string representation of the athlete settings.
+    """
+    result = "Athlete Settings:\n\n"
+
+    # Power Model section
+    result += "Power Model:\n"
+    if "ftp" in settings and settings["ftp"] is not None:
+        result += f"- FTP: {settings['ftp']} W\n"
+    if "cp" in settings and settings["cp"] is not None:
+        result += f"- Critical Power (CP): {settings['cp']} W\n"
+    if "w_prime" in settings and settings["w_prime"] is not None:
+        wprime = settings["w_prime"]
+        # Convert joules to kilojoules if necessary
+        if isinstance(wprime, (int, float)) and wprime > 1000:
+            wprime_kj = wprime / 1000
+            result += f"- W' (W-prime): {wprime_kj:.1f} kJ\n"
+        else:
+            result += f"- W' (W-prime): {wprime} J\n"
+    if "p_max" in settings and settings["p_max"] is not None:
+        result += f"- Pmax: {settings['p_max']} W\n"
+    if "indoor_ftp" in settings and settings["indoor_ftp"] is not None:
+        result += f"- Indoor FTP: {settings['indoor_ftp']} W\n"
+
+    # Heart Rate section
+    result += "\nHeart Rate:\n"
+    if "lthr" in settings and settings["lthr"] is not None:
+        result += f"- LTHR: {settings['lthr']} bpm\n"
+    if "max_hr" in settings and settings["max_hr"] is not None:
+        result += f"- Max HR: {settings['max_hr']} bpm\n"
+    if "rhr" in settings and settings["rhr"] is not None:
+        result += f"- Resting HR: {settings['rhr']} bpm\n"
+
+    # Physical data section
+    result += "\nPhysical:\n"
+    if "weight" in settings and settings["weight"] is not None:
+        result += f"- Weight: {settings['weight']} kg\n"
+
+    # Calculate W/kg if we have FTP and weight
+    if (
+        "ftp" in settings
+        and settings["ftp"] is not None
+        and "weight" in settings
+        and settings["weight"] is not None
+    ):
+        ftp_wkg = settings["ftp"] / settings["weight"]
+        result += f"- FTP (W/kg): {ftp_wkg:.2f}\n"
+
+    # Power Zones section - Intervals.icu stores zone thresholds, not ranges
+    if "power_zones" in settings and settings["power_zones"] is not None:
+        zones = settings["power_zones"]
+        zone_names = settings.get("power_zone_names", [])
+        if zones and isinstance(zones, list):
+            result += "\nPower Zones (FTP thresholds):\n"
+            # Calculate ranges from thresholds
+            for i, threshold in enumerate(zones):
+                if i < len(zone_names):
+                    zone_name = zone_names[i]
+                    if i == 0:
+                        result += f"- {zone_name}: < {threshold}%\n"
+                    else:
+                        result += f"- {zone_name}: {zones[i - 1]}-{threshold}%\n"
+
+    # Sport Type
+    if "sport_type" in settings:
+        result += f"\nSport Type: {settings['sport_type']}\n"
+
+    # Last Updated
+    if "updated" in settings and settings["updated"]:
+        result += f"Last Updated: {settings['updated']}\n"
 
     return result
