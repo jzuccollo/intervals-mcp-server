@@ -1,8 +1,7 @@
 """
 Energy system balance analysis tools for Intervals.icu.
 
-This module contains tools for calculating energy system strain distribution
-and providing recommendations for balanced training.
+This module contains tools for calculating energy system strain distribution.
 """
 
 from datetime import datetime, timedelta
@@ -16,13 +15,6 @@ from intervals_mcp_server.utils.validation import resolve_athlete_id, resolve_da
 from intervals_mcp_server.mcp_instance import mcp  # noqa: F401
 
 config = get_config()
-
-# Target strain distribution ranges
-STRAIN_TARGETS = {
-    "aerobic": (70, 80),
-    "glycolytic": (15, 25),
-    "neuromuscular": (5, 10),
-}
 
 
 def _parse_activities_from_result(result: Any) -> list[dict[str, Any]]:
@@ -127,86 +119,13 @@ def _calculate_energy_balance(activities: list[dict[str, Any]]) -> dict[str, Any
     }
 
 
-def _assess_system(
-    name: str, pct: float, target_min: float, target_max: float
-) -> tuple[str, str]:
-    """Return (status_emoji, assessment_text) for a system."""
-    if pct == 0:
-        return "⚫", "No strain data"
-    elif pct < target_min * 0.6:  # Very deficient (< 60% of minimum)
-        return "🔴", f"Severely deficient ({pct:.1f}% vs {target_min:.0f}-{target_max:.0f}% target)"
-    elif pct < target_min:
-        return "⚠", f"Deficient ({pct:.1f}% vs {target_min:.0f}-{target_max:.0f}% target)"
-    elif pct > target_max * 1.3:  # Very elevated (> 130% of maximum)
-        return (
-            "⚠",
-            f"Excessively elevated ({pct:.1f}% vs {target_min:.0f}-{target_max:.0f}% target)",
-        )
-    elif pct > target_max:
-        return "⚠", f"Elevated ({pct:.1f}% vs {target_min:.0f}-{target_max:.0f}% target)"
-    else:
-        return "✓", f"Adequate ({pct:.1f}%)"
-
-
-def _generate_recommendations(balance: dict[str, Any]) -> str:
-    """Generate actionable recommendations based on strain distribution."""
-    recommendations = []
-
-    aerobic_pct = balance["aerobic_pct"]
-    glycolytic_pct = balance["glycolytic_pct"]
-    neuromuscular_pct = balance["neuromuscular_pct"]
-
-    # Check aerobic
-    if aerobic_pct < 60:
-        recommendations.append(
-            "- Add endurance rides (90+ min) or sustained sweet spot sessions "
-            "to build aerobic foundation"
-        )
-    elif aerobic_pct > 85:
-        recommendations.append(
-            "- Reduce endurance volume slightly; aerobic system is well-developed. "
-            "Focus on other systems."
-        )
-
-    # Check glycolytic
-    if glycolytic_pct < 10:
-        recommendations.append(
-            "- Increase glycolytic stimulus: add VO₂max intervals (3-5 × 3-5 min @112-118% FTP) "
-            "or threshold work"
-        )
-    elif glycolytic_pct > 28:
-        recommendations.append(
-            "- Reduce high-intensity frequency; glycolytic stress is elevated. "
-            "Prioritise recovery."
-        )
-
-    # Check neuromuscular
-    if neuromuscular_pct < 2:
-        recommendations.append(
-            "- Add neuromuscular work: sprint primers (3-5 × 10-12s) before endurance rides, "
-            "or dedicated power sessions"
-        )
-    elif neuromuscular_pct > 12:
-        recommendations.append(
-            "- Reduce sprint/power emphasis; neuromuscular stress is elevated. "
-            "Focus on aerobic/glycolytic work."
-        )
-
-    if not recommendations:
-        recommendations.append(
-            "- Strain distribution is well-balanced. Continue current training approach."
-        )
-
-    return "\n".join(recommendations)
-
-
 def _format_energy_balance_response(
     balance: dict[str, Any],
     start_date: str,
     end_date: str,
     activities_count: int,
 ) -> str:
-    """Format energy balance results into human-readable output."""
+    """Format energy balance results into raw data output."""
     # Parse dates for display
     start_dt = datetime.fromisoformat(start_date)
     end_dt = datetime.fromisoformat(end_date)
@@ -216,56 +135,22 @@ def _format_energy_balance_response(
     result += f"Period: {start_date} to {end_date}\n"
     result += f"Activities analyzed: {activities_count}\n\n"
 
-    # Distribution section
-    result += "Distribution:\n"
+    # Strain distribution percentages
+    result += "Strain Distribution:\n"
+    result += f"- Aerobic (SSCP):       {balance['aerobic_pct']:.1f}%\n"
+    result += f"- Glycolytic (SSW):     {balance['glycolytic_pct']:.1f}%\n"
+    result += f"- Neuromuscular (SSPmax): {balance['neuromuscular_pct']:.1f}%\n\n"
 
-    aerobic_emoji, aerobic_status = _assess_system(
-        "Aerobic", balance["aerobic_pct"], *STRAIN_TARGETS["aerobic"]
-    )
-    result += f"- Aerobic (SSCP):       {aerobic_emoji} {aerobic_status}\n"
-
-    glycolytic_emoji, glycolytic_status = _assess_system(
-        "Glycolytic", balance["glycolytic_pct"], *STRAIN_TARGETS["glycolytic"]
-    )
-    result += f"- Glycolytic (SSW):     {glycolytic_emoji} {glycolytic_status}\n"
-
-    neuromuscular_emoji, neuromuscular_status = _assess_system(
-        "Neuromuscular",
-        balance["neuromuscular_pct"],
-        *STRAIN_TARGETS["neuromuscular"],
-    )
-    result += f"- Neuromuscular (SSPmax): {neuromuscular_emoji} {neuromuscular_status}\n\n"
-
-    # Absolute strain section
+    # Absolute strain values
     result += "Absolute Strain:\n"
     result += f"- Aerobic:       {balance['aerobic_total']:.1f} strain units\n"
     result += f"- Glycolytic:    {balance['glycolytic_total']:.2f} kJ\n"
     result += f"- Neuromuscular: {balance['neuromuscular_total']:.2f} strain units\n"
-    result += f"- Total:         {balance['total_strain']:.1f} strain units\n\n"
-
-    # Assessment section
-    result += "Assessment:\n"
+    result += f"- Total:         {balance['total_strain']:.1f} strain units\n"
 
     if balance["total_strain"] == 0:
-        result += "- No strain data available for this period. "
+        result += "\nNo strain data available for this period. "
         result += "Please ensure activities have been synced with Intervals.icu.\n"
-    else:
-        # Identify deficiencies
-        deficient_systems = []
-        if balance["aerobic_pct"] < STRAIN_TARGETS["aerobic"][0]:
-            deficient_systems.append("Aerobic")
-        if balance["glycolytic_pct"] < STRAIN_TARGETS["glycolytic"][0]:
-            deficient_systems.append("Glycolytic")
-        if balance["neuromuscular_pct"] < STRAIN_TARGETS["neuromuscular"][0]:
-            deficient_systems.append("Neuromuscular")
-
-        if deficient_systems:
-            result += f"- {', '.join(deficient_systems)} system(s) is DEFICIENT below target range\n"
-        else:
-            result += "- All systems within or above target ranges\n"
-
-    result += "\nRecommendations:\n"
-    result += _generate_recommendations(balance)
 
     return result
 
@@ -280,8 +165,9 @@ async def get_energy_system_balance(
 ) -> str:
     """Calculate energy system strain distribution over a period.
 
-    Analyses the balance of training across aerobic, glycolytic, and neuromuscular
-    systems based on strain scores from recent activities.
+    Returns raw strain data (percentages and absolutes) for aerobic, glycolytic,
+    and neuromuscular systems. No interpretation or target comparison is provided
+    by this endpoint; that logic belongs in the coaching layer.
 
     Args:
         athlete_id: The Intervals.icu athlete ID (optional, will use ATHLETE_ID from .env if not provided)

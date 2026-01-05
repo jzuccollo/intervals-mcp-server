@@ -20,20 +20,6 @@ from intervals_mcp_server.mcp_instance import mcp  # noqa: F401
 config = get_config()
 
 
-def _interpret_tsb(tsb: float) -> str:
-    """Interpret TSB value and return status description."""
-    if tsb > 10:
-        return "Very fresh, risk of detraining"
-    elif tsb > 0:
-        return "Fresh, ready for hard efforts"
-    elif tsb > -10:
-        return "Optimal training zone"
-    elif tsb > -20:
-        return "Moderate fatigue, building fitness"
-    elif tsb > -30:
-        return "High fatigue, monitor recovery"
-    else:
-        return "Very high fatigue, consider rest"
 
 
 def _parse_activities_from_result(result: Any) -> list[dict[str, Any]]:
@@ -166,77 +152,42 @@ def _calculate_strain_pmc(
 def _format_strain_pmc_response(
     pmc: dict[str, dict[str, float]], as_of_date: datetime
 ) -> str:
-    """Format PMC calculation results into human-readable output."""
+    """Format PMC calculation results into raw data output."""
     date_str = as_of_date.strftime("%Y-%m-%d")
 
-    result = f"Strain-Based PMC (as of {date_str}):\n\n"
+    result = f"Strain-Based PMC (as of {date_str})\n\n"
 
     # Extract values for all systems
     aerobic = pmc.get("sscp", {})
     aerobic_ctl = aerobic.get("ctl", 0)
     aerobic_atl = aerobic.get("atl", 0)
     aerobic_tsb = aerobic.get("tsb", 0)
-    aerobic_status = _interpret_tsb(aerobic_tsb)
 
     glycolytic = pmc.get("ssw", {})
     glycolytic_ctl = glycolytic.get("ctl", 0)
     glycolytic_atl = glycolytic.get("atl", 0)
     glycolytic_tsb = glycolytic.get("tsb", 0)
-    glycolytic_status = _interpret_tsb(glycolytic_tsb)
 
     neuromuscular = pmc.get("sspmax", {})
     neuromuscular_ctl = neuromuscular.get("ctl", 0)
     neuromuscular_atl = neuromuscular.get("atl", 0)
     neuromuscular_tsb = neuromuscular.get("tsb", 0)
-    neuromuscular_status = _interpret_tsb(neuromuscular_tsb)
 
-    # Format as table with units clarified
-    result += "System                   | Fitness (CTL)      | Fatigue (ATL)      | Form (TSB)         | Status\n"
-    result += "-------------------------|--------------------|--------------------|--------------------|---------\n"
+    # Format as table with raw metrics and units
+    result += "System                   | Fitness (CTL)      | Fatigue (ATL)      | Form (TSB)\n"
+    result += "-------------------------|--------------------|--------------------|--------------------\n"
 
     # Aerobic row (strain score - unitless)
-    result += f"Aerobic (SSCP)           | {aerobic_ctl:14.1f}   | {aerobic_atl:14.1f}   | {aerobic_tsb:14.1f}   | {aerobic_status}\n"
+    result += f"Aerobic (SSCP)           | {aerobic_ctl:14.1f}   | {aerobic_atl:14.1f}   | {aerobic_tsb:14.1f}\n"
 
     # Glycolytic row (W' capacity in kJ)
-    result += f"Glycolytic (SSW)         | {glycolytic_ctl:10.2f} kJ   | {glycolytic_atl:10.2f} kJ   | {glycolytic_tsb:10.2f} kJ   | {glycolytic_status}\n"
+    result += f"Glycolytic (SSW)         | {glycolytic_ctl:10.2f} kJ   | {glycolytic_atl:10.2f} kJ   | {glycolytic_tsb:10.2f} kJ\n"
 
     # Neuromuscular row (strain score - unitless)
-    result += f"Neuromuscular (SSPmax)   | {neuromuscular_ctl:14.2f}   | {neuromuscular_atl:14.2f}   | {neuromuscular_tsb:14.2f}   | {neuromuscular_status}\n"
+    result += f"Neuromuscular (SSPmax)   | {neuromuscular_ctl:14.2f}   | {neuromuscular_atl:14.2f}   | {neuromuscular_tsb:14.2f}\n"
 
-    result += "\nNote: Aerobic & Neuromuscular are unitless strain scores; Glycolytic is in kilojoules (kJ)\n\n"
-
-    # Summary
-    result += "Summary:\n"
-
-    # Determine overall training status
-    avg_tsb = (aerobic_tsb + glycolytic_tsb + neuromuscular_tsb) / 3
-    if avg_tsb > 0:
-        overall_status = "Fresh and ready for training"
-    elif avg_tsb > -15:
-        overall_status = "Absorbing load well, in productive zone"
-    elif avg_tsb > -25:
-        overall_status = "Accumulating fatigue, manage intensity"
-    else:
-        overall_status = "High fatigue, prioritise recovery"
-
-    result += f"- Overall status: {overall_status}\n"
-
-    # Find freshest system
-    systems_tsb = {
-        "Aerobic": aerobic_tsb,
-        "Glycolytic": glycolytic_tsb,
-        "Neuromuscular": neuromuscular_tsb,
-    }
-
-    def get_tsb(system: str) -> float:
-        return systems_tsb[system]
-
-    freshest = max(systems_tsb, key=get_tsb)
-    result += f"- Freshest system: {freshest} ({systems_tsb[freshest]:.1f})\n"
-
-    # Find most fatigued system
-    most_fatigued = min(systems_tsb, key=get_tsb)
-    result += f"- Most fatigued system: {most_fatigued} ({systems_tsb[most_fatigued]:.1f})\n"
+    result += "\nMetrics: CTL (Chronic Training Load) = fitness; ATL (Acute Training Load) = fatigue; TSB (Training Stress Balance) = CTL - ATL.\n"
+    result += "Units: Aerobic & Neuromuscular are unitless strain scores; Glycolytic is in kilojoules (kJ).\n"
 
     return result
 

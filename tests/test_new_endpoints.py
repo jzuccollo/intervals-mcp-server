@@ -382,11 +382,12 @@ def test_get_energy_system_balance_with_activities(monkeypatch):
 
     result = asyncio.run(get_energy_system_balance(athlete_id="1", days=14))
     assert "Energy System Balance" in result
-    assert "Distribution:" in result
-    assert "Aerobic" in result
-    assert "Glycolytic" in result
-    assert "Neuromuscular" in result
+    assert "Strain Distribution:" in result
+    assert "Aerobic (SSCP)" in result
+    assert "Glycolytic (SSW)" in result
+    assert "Neuromuscular (SSPmax)" in result
     assert "%" in result  # Should show percentages
+    assert "Absolute Strain:" in result
 
 
 def test_get_energy_system_balance_no_activities(monkeypatch):
