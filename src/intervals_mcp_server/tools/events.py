@@ -13,30 +13,12 @@ from intervals_mcp_server.config import get_config
 from intervals_mcp_server.utils.dates import get_default_end_date, get_default_future_end_date
 from intervals_mcp_server.utils.formatting import format_event_details, format_event_summary
 from intervals_mcp_server.utils.types import WorkoutDoc
-from intervals_mcp_server.utils.validation import resolve_athlete_id, validate_date
+from intervals_mcp_server.utils.validation import resolve_activity_type, resolve_athlete_id, validate_date
 
 # Import mcp instance from shared module for tool registration
 from intervals_mcp_server.mcp_instance import mcp  # noqa: F401
 
 config = get_config()
-
-
-def _resolve_workout_type(name: str | None, workout_type: str | None) -> str:
-    """Determine the workout type based on the name and provided value."""
-    if workout_type:
-        return workout_type
-    name_lower = name.lower() if name else ""
-    mapping = [
-        ("Ride", ["bike", "cycle", "cycling", "ride"]),
-        ("Run", ["run", "running", "jog", "jogging"]),
-        ("Swim", ["swim", "swimming", "pool"]),
-        ("Walk", ["walk", "walking", "hike", "hiking"]),
-        ("Row", ["row", "rowing"]),
-    ]
-    for workout, keywords in mapping:
-        if any(keyword in name_lower for keyword in keywords):
-            return workout
-    return "Ride"  # Default
 
 
 def _prepare_event_data(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -51,7 +33,7 @@ def _prepare_event_data(  # pylint: disable=too-many-arguments,too-many-position
 
     Many arguments are required to match the Intervals.icu API event structure.
     """
-    resolved_workout_type = _resolve_workout_type(name, workout_type)
+    resolved_workout_type = resolve_activity_type(name, workout_type)
     return {
         "start_date_local": start_date + "T00:00:00",
         "category": "WORKOUT",
@@ -76,13 +58,13 @@ def _handle_event_response(
     if not result:
         return f"No events {action} for athlete {athlete_id}."
     if isinstance(result, dict):
-        return f"Successfully {action} event: {json.dumps(result, indent=2)}"
+        return f"Successfully {action} event id: {result.get('id')}"
     return f"Event {action} successfully at {start_date}"
 
 
 async def _delete_events_list(
     athlete_id: str, api_key: str | None, events: list[dict[str, Any]]
-) -> list[str]:
+) -> list[int | str | None]:
     """Delete a list of events and return IDs of failed deletions.
 
     Args:
@@ -93,7 +75,7 @@ async def _delete_events_list(
     Returns:
         List of event IDs that failed to delete.
     """
-    failed_events = []
+    failed_events: list[int | str | None] = []
     for event in events:
         result = await make_intervals_request(
             url=f"/athlete/{athlete_id}/events/{event.get('id')}",
@@ -310,50 +292,50 @@ async def add_or_update_event(  # pylint: disable=too-many-arguments,too-many-po
         "workout_doc": {
             "description": "High-intensity workout for increasing VO2 max",
             "steps": [
-                {"power": {"value": "80", "units": "%ftp"}, "duration": "900", "warmup": true},
+                {"power": {"value": 80, "units": "%ftp"}, "duration": 900, "warmup": true},
                 {"reps": 2, "text": "High-intensity intervals", "steps": [
-                    {"power": {"value": "110", "units": "%ftp"}, "distance": "500", "text": "High-intensity"},
-                    {"power": {"value": "80", "units": "%ftp"}, "duration": "90", "text": "Recovery"}
+                    {"power": {"value": 110, "units": "%ftp"}, "distance": 500, "text": "High-intensity"},
+                    {"power": {"value": 80, "units": "%ftp"}, "duration": 90, "text": "Recovery"}
                 ]},
-                {"power": {"value": "80", "units": "%ftp"}, "duration": "600", "cooldown": true}
-                {"text": ""}, # Add comments or blank lines for readability
+                {"power": {"value": 80, "units": "%ftp"}, "duration": 600, "cooldown": true},
+                {"text": ""}
             ]
         }
 
     Step properties:
         distance: Distance of step in meters
-            {"distance": "5000"}
+            {"distance": 5000}
         duration: Duration of step in seconds
-            {"duration": "1800"}
+            {"duration": 1800}
         power/hr/pace/cadence: Define step intensity
-            Percentage of FTP: {"power": {"value": "80", "units": "%ftp"}}
-            Absolute power: {"power": {"value": "200", "units": "w"}}
-            Heart rate: {"hr": {"value": "75", "units": "%hr"}}
-            Heart rate (LTHR): {"hr": {"value": "85", "units": "%lthr"}}
-            Cadence: {"cadence": {"value": "90", "units": "rpm"}}
-            Pace by ftp: {"pace": {"value": "80", "units": "%pace"}}
-            Pace by zone: {"pace": {"value": "Z2", "units": "pace_zone"}}
-            Zone by power: {"power": {"value": "Z2", "units": "power_zone"}}
-            Zone by heart rate: {"hr": {"value": "Z2", "units": "hr_zone"}}
+            Percentage of FTP: {"power": {"value": 80, "units": "%ftp"}}
+            Absolute power: {"power": {"value": 200, "units": "w"}}
+            Heart rate: {"hr": {"value": 75, "units": "%hr"}}
+            Heart rate (LTHR): {"hr": {"value": 85, "units": "%lthr"}}
+            Cadence: {"cadence": {"value": 90, "units": "cadence"}}
+            Pace by ftp: {"pace": {"value": 80, "units": "%pace"}}
+            Pace by zone: {"pace": {"value": 2, "units": "pace_zone"}}
+            Zone by power: {"power": {"value": 2, "units": "power_zone"}}
+            Zone by heart rate: {"hr": {"value": 2, "units": "hr_zone"}}
         Ranges: Specify ranges for power, heart rate, or cadence:
-            {"power": {"start": "80", "end": "90", "units": "%ftp"}}
+            {"power": {"start": 80, "end": 90, "units": "%ftp"}}
         Ramps: Instead of a range, indicate a gradual change in intensity (useful for ERG workouts):
-            {"ramp": True, "power": {"start": "80", "end": "90", "units": "%ftp"}}
+            {"ramp": true, "power": {"start": 80, "end": 90, "units": "%ftp"}}
         Repeats: include the reps property and add nested steps
             {"reps": 3,
-            "steps": [
-                {"power": {"value": "110", "units": "%ftp"}, "distance": "500", "text": "High-intensity"},
-                {"power": {"value": "80", "units": "%ftp"}, "duration": "90", "text": "Recovery"}
+             "steps": [
+                {"power": {"value": 110, "units": "%ftp"}, "distance": 500, "text": "High-intensity"},
+                {"power": {"value": 80, "units": "%ftp"}, "duration": 90, "text": "Recovery"}
             ]}
-        Free Ride: Include free to indicate a segment without ERG control, optionally with a suggested power range:
-            {"free": true, "power": {"value": "80", "units": "%ftp"}}
+        Free Ride: Include freeride to indicate a segment without ERG control, optionally with a suggested power range:
+            {"freeride": true, "power": {"value": 80, "units": "%ftp"}}
         Comments and Labels: Add descriptive text to label steps:
             {"text": "Warmup"}
 
     How to use steps:
-        - Set distance or duration as appropriate for step
-        - Use "reps" with nested steps to define repeat intervals (as in example above)
-        - Define one of "power", "hr" or "pace" to define step intensity
+    - Set distance or duration as appropriate for step
+    - Use "reps" with nested steps to define repeat intervals (as in example above)
+    - Define one of "power", "hr" or "pace" to define step intensity
     """
     athlete_id_to_use, error_msg = resolve_athlete_id(athlete_id, config.athlete_id)
     if error_msg:
@@ -363,11 +345,57 @@ async def add_or_update_event(  # pylint: disable=too-many-arguments,too-many-po
         start_date = datetime.now().strftime("%Y-%m-%d")
 
     try:
+        validated_date = validate_date(start_date)
         event_data = _prepare_event_data(
-            name, workout_type, start_date, workout_doc, moving_time, distance
+            name, workout_type, validated_date, workout_doc, moving_time, distance
         )
         return await _create_or_update_event_request(
-            athlete_id_to_use, api_key, event_data, start_date, event_id
+            athlete_id_to_use, api_key, event_data, validated_date, event_id
+        )
+    except ValueError as e:
+        return f"Error: {e}"
+
+
+@mcp.tool()
+async def add_or_update_note(
+    name: str,
+    description: str,
+    start_date: str | None = None,
+    color: str | None = "green",
+    athlete_id: str | None = None,
+    api_key: str | None = None,
+    event_id: str | None = None,
+) -> str:
+    """Add or update a plain text note (category NOTE) on the Intervals.icu calendar.
+
+    Args:
+        name: Title of the note
+        description: Plain text content of the note
+        start_date: Date in YYYY-MM-DD format (optional, defaults to today)
+        color: Color of the note (e.g. green, orange, red, blue)
+        athlete_id: The Intervals.icu athlete ID (optional)
+        api_key: The Intervals.icu API key (optional)
+        event_id: The Intervals.icu event ID (optional, for updates)
+    """
+    athlete_id_to_use, error_msg = resolve_athlete_id(athlete_id, config.athlete_id)
+    if error_msg:
+        return error_msg
+
+    if not start_date:
+        start_date = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        validated_date = validate_date(start_date)
+        event_data = {
+            "category": "NOTE",
+            "name": name,
+            "description": description,
+            "start_date_local": validated_date + "T00:00:00",
+            "color": color
+        }
+
+        return await _create_or_update_event_request(
+            athlete_id_to_use, api_key, event_data, validated_date, event_id
         )
     except ValueError as e:
         return f"Error: {e}"

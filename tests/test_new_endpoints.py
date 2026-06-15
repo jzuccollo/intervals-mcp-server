@@ -1,5 +1,6 @@
 """
-Unit tests for new MCP server tool functions: get_power_curve and get_athlete_settings.
+Unit tests for new MCP server tool functions: get_athlete_settings, get_strain_pmc,
+and get_energy_system_balance.
 
 These tests use monkeypatching to mock API responses and verify the formatting and output
 of the new endpoint functions.
@@ -15,96 +16,10 @@ os.environ.setdefault("API_KEY", "test")
 os.environ.setdefault("ATHLETE_ID", "i1")
 
 from intervals_mcp_server.server import (  # pylint: disable=wrong-import-position
-    get_power_curve,
     get_athlete_settings,
     get_strain_pmc,
     get_energy_system_balance,
 )
-
-
-def test_get_power_curve(monkeypatch):
-    """
-    Test get_power_curve returns a formatted string with power curve data.
-    """
-    # API response structure: {"list": [{"secs": [...], "watts": [...], "watts_per_kg": [...]}], "activities": [...]}
-    sample_power_curve_response = {
-        "list": [
-            {
-                "secs": [1, 5, 10, 30, 60, 120, 300, 600, 1200, 3600],
-                "watts": [1050, 980, 920, 650, 480, 400, 320, 280, 270, 260],
-                "watts_per_kg": [12.6, 11.8, 11.0, 7.8, 5.8, 4.8, 3.8, 3.4, 3.2, 3.1],
-            }
-        ],
-        "activities": [],
-    }
-
-    async def fake_request(*_args, **_kwargs):
-        # Verify that the type parameter is passed
-        assert _kwargs.get("params", {}).get("type") == "Ride"
-        return sample_power_curve_response
-
-    # Patch in both api.client and tools modules
-    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
-    monkeypatch.setattr(
-        "intervals_mcp_server.tools.power_curve.make_intervals_request", fake_request
-    )
-
-    result = asyncio.run(get_power_curve(athlete_id="1"))
-    assert "Power Curve:" in result
-    assert "1s" in result
-    assert "5s" in result
-    assert "1050" in result  # 1s power
-    assert "480" in result  # 1m power
-
-
-def test_get_power_curve_with_curves_parameter(monkeypatch):
-    """
-    Test get_power_curve respects the curves parameter.
-    """
-    sample_power_curve_response = {
-        "list": [
-            {
-                "secs": [5, 60],
-                "watts": [950, 470],
-                "watts_per_kg": [11.4, 5.6],
-            }
-        ],
-        "activities": [],
-    }
-
-    async def fake_request(*_args, **_kwargs):
-        # Verify that the curves parameter is passed
-        params = _kwargs.get("params", {})
-        assert params.get("curves") == "90d"
-        assert params.get("type") == "Ride"
-        return sample_power_curve_response
-
-    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
-    monkeypatch.setattr(
-        "intervals_mcp_server.tools.power_curve.make_intervals_request", fake_request
-    )
-
-    result = asyncio.run(get_power_curve(athlete_id="1", curves="90d"))
-    assert "Power Curve:" in result
-    assert "950" in result
-
-
-def test_get_power_curve_empty_data(monkeypatch):
-    """
-    Test get_power_curve handles empty power curve data gracefully.
-    """
-
-    async def fake_request(*_args, **_kwargs):
-        return {}
-
-    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
-    monkeypatch.setattr(
-        "intervals_mcp_server.tools.power_curve.make_intervals_request", fake_request
-    )
-
-    result = asyncio.run(get_power_curve(athlete_id="1"))
-    # Empty data should still show the Power Curve header
-    assert "Power Curve:" in result
 
 
 def test_get_athlete_settings(monkeypatch):
@@ -236,24 +151,6 @@ def test_get_athlete_settings_error_handling(monkeypatch):
     result = asyncio.run(get_athlete_settings(athlete_id="invalid"))
     assert "Error" in result
     assert "Athlete not found" in result
-
-
-def test_get_power_curve_error_handling(monkeypatch):
-    """
-    Test get_power_curve handles API errors gracefully.
-    """
-
-    async def fake_request(*_args, **_kwargs):
-        return {"error": True, "message": "API Key invalid"}
-
-    monkeypatch.setattr("intervals_mcp_server.api.client.make_intervals_request", fake_request)
-    monkeypatch.setattr(
-        "intervals_mcp_server.tools.power_curve.make_intervals_request", fake_request
-    )
-
-    result = asyncio.run(get_power_curve(athlete_id="1"))
-    assert "Error" in result
-    assert "API Key invalid" in result
 
 
 def test_get_strain_pmc_with_activities(monkeypatch):

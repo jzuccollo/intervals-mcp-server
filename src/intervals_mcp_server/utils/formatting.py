@@ -4,8 +4,30 @@ Formatting utilities for Intervals.icu MCP Server
 This module contains formatting functions for handling data from the Intervals.icu API.
 """
 
+import json
 from datetime import datetime
 from typing import Any
+
+
+class _KeyTracker(dict):
+    """A dict wrapper that records which keys are accessed."""
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        super().__init__(data)
+        self.accessed: set[str] = set()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        self.accessed.add(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        self.accessed.add(key)
+        return super().__getitem__(key)
+
+    def __contains__(self, key: object) -> bool:
+        if isinstance(key, str):
+            self.accessed.add(key)
+        return super().__contains__(key)
 
 
 def format_activity_summary(activity: dict[str, Any]) -> str:
@@ -29,6 +51,26 @@ def format_activity_summary(activity: dict[str, Any]) -> str:
     feel = activity.get("feel", "N/A")
     if isinstance(feel, int):
         feel = f"{feel}/5"
+
+    # Gear (bike, shoes) - ICU activity payloads include the gear ID but not the
+    # gear name (which lives in /athlete/{id}/gear). The tools.gear module
+    # resolves the name and injects it as `_resolved_gear_name` before this
+    # formatter runs. Prefer the resolved name; otherwise fall back to whatever
+    # the raw payload provides (typically just an ID).
+    resolved_name = activity.get("_resolved_gear_name")
+    gear_raw = activity.get("gear")
+    if resolved_name:
+        gear_name = resolved_name
+        if isinstance(gear_raw, dict):
+            gear_id = gear_raw.get("id", activity.get("gear_id", "N/A"))
+        else:
+            gear_id = activity.get("gear_id", "N/A")
+    elif isinstance(gear_raw, dict):
+        gear_name = gear_raw.get("name") or gear_raw.get("display_name") or "N/A"
+        gear_id = gear_raw.get("id", "N/A")
+    else:
+        gear_name = activity.get("gear_name", "N/A")
+        gear_id = activity.get("gear_id", "N/A")
 
     result = f"""
 Activity: {activity.get("name", "Unnamed")}
@@ -61,7 +103,7 @@ Decoupling: {activity.get("decoupling", "N/A")}
 
 Other Metrics:
 Cadence: {activity.get("average_cadence", "N/A")} rpm
-Calories: {activity.get("calories", "N/A")}
+Calories burned: {activity.get("calories", "N/A")} kcal
 Average Speed: {activity.get("average_speed", "N/A")} m/s
 Max Speed: {activity.get("max_speed", "N/A")} m/s
 Average Stride: {activity.get("average_stride", "N/A")}
@@ -94,6 +136,10 @@ Device Info:
 Device: {activity.get("device_name", "N/A")}
 Power Meter: {activity.get("power_meter", "N/A")}
 File Type: {activity.get("file_type", "N/A")}
+
+Gear:
+Name: {gear_name}
+ID: {gear_id}
 """
 
     strain_section = _format_strain_metrics(activity)
@@ -226,14 +272,25 @@ def _format_subjective_feelings(entries: dict[str, Any]) -> list[str]:
 
 
 def _format_nutrition_hydration(entries: dict[str, Any]) -> list[str]:
-    """Format nutrition and hydration section."""
+    """Format nutrition and hydration section.
+
+    Handles both legacy fields (kcalConsumed, hydrationVolume) and the native
+    macro fields from the Intervals.icu API (carbohydrates, protein,
+    fatTotal). All fields are rendered conditionally — a null/missing value
+    hides the corresponding line for backward compatibility with older
+    wellness records.
+    """
     nutrition_lines = []
-    for k, label in [
-        ("kcalConsumed", "Calories Consumed"),
-        ("hydrationVolume", "Hydration Volume"),
+    for k, label, unit in [
+        ("kcalConsumed", "Calories Consumed", ""),
+        ("carbohydrates", "Carbohydrates", "g"),
+        ("protein", "Protein", "g"),
+        ("fatTotal", "Fat", "g"),
+        ("hydrationVolume", "Hydration Volume", ""),
     ]:
         if entries.get(k) is not None:
-            nutrition_lines.append(f"- {label}: {entries[k]}")
+            suffix = f" {unit}" if unit else ""
+            nutrition_lines.append(f"- {label}: {entries[k]}{suffix}")
 
     if entries.get("hydration") is not None:
         nutrition_lines.append(f"  Hydration Score: {entries['hydration']}/10")
@@ -280,7 +337,19 @@ def _format_strain_metrics(
     return "\n".join(lines)
 
 
-def format_wellness_entry(entries: dict[str, Any]) -> str:
+def _format_other_fields(entries: dict[str, Any], known_keys: set[str]) -> list[str]:
+    """Format any fields not already handled by the standard formatting sections."""
+    other_lines = []
+    for key, value in entries.items():
+        if key not in known_keys and value is not None:
+            if isinstance(value, (dict, list)):
+                other_lines.append(f"- {key}: {json.dumps(value)}")
+            else:
+                other_lines.append(f"- {key}: {value}")
+    return other_lines
+
+
+def format_wellness_entry(entries: dict[str, Any], include_all_fields: bool = False) -> str:
     """Format wellness entry data into a readable string.
 
     Formats various wellness metrics including training metrics, strain scores,
@@ -297,13 +366,23 @@ def format_wellness_entry(entries: dict[str, Any]) -> str:
             - Sleep: sleepSecs, sleepHours, sleepQuality, sleepScore, readiness
             - Menstrual: menstrualPhase, menstrualPhasePredicted
             - Subjective: soreness, fatigue, stress, mood, motivation, injury
-            - Nutrition: kcalConsumed, hydrationVolume, hydration
+            - Nutrition: kcalConsumed, carbohydrates, protein, fatTotal, hydrationVolume, hydration
             - Activity: steps
             - Other: comments, locked, date
+        include_all_fields: If True, any fields not covered by the standard
+            sections are appended under an "Other Fields" heading (default False).
 
     Returns:
         A formatted string representation of the wellness entry.
     """
+    if include_all_fields:
+        entries = _KeyTracker(entries)
+        # Mark metadata/internal keys so they don't appear in "Other Fields"
+        entries.get("date")
+        entries.get("updated")
+        entries.get("tempWeight")
+        entries.get("tempRestingHR")
+
     lines = ["Wellness Data:"]
     lines.append(f"Date: {entries.get('id', 'N/A')}")
     lines.append("")
@@ -364,6 +443,13 @@ def format_wellness_entry(entries: dict[str, Any]) -> str:
         lines.append(f"Comments: {entries['comments']}")
     if "locked" in entries:
         lines.append(f"Status: {'Locked' if entries.get('locked') else 'Unlocked'}")
+
+    if include_all_fields and isinstance(entries, _KeyTracker):
+        other_lines = _format_other_fields(entries, entries.accessed)
+        if other_lines:
+            lines.append("")
+            lines.append("Other Fields:")
+            lines.extend(other_lines)
 
     return "\n".join(lines)
 
@@ -437,6 +523,43 @@ Result: {event.get("result", "N/A")}"""
 Calendar: {cal.get("name", "N/A")}"""
 
     return event_details
+
+
+def format_activity_message(message: dict[str, Any]) -> str:
+    """Format an activity message/note into a readable string."""
+    created = message.get("created", "Unknown")
+    if isinstance(created, str) and len(created) > 10:
+        try:
+            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            created = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            pass
+
+    return f"""Author: {message.get("name", "Unknown")}
+Date: {created}
+Type: {message.get("type", "TEXT")}
+Content: {message.get("content", "")}"""
+
+
+def format_custom_item_details(item: dict[str, Any]) -> str:
+    """Format detailed custom item information into a readable string."""
+    lines = ["Custom Item Details:", ""]
+    lines.append(f"ID: {item.get('id', 'N/A')}")
+    lines.append(f"Name: {item.get('name', 'N/A')}")
+    lines.append(f"Type: {item.get('type', 'N/A')}")
+
+    if item.get("description"):
+        lines.append(f"Description: {item['description']}")
+    if item.get("visibility"):
+        lines.append(f"Visibility: {item['visibility']}")
+    if item.get("index") is not None:
+        lines.append(f"Index: {item['index']}")
+    if item.get("hide_script") is not None:
+        lines.append(f"Hide Script: {item['hide_script']}")
+    if item.get("content"):
+        lines.append(f"Content: {json.dumps(item['content'], indent=2)}")
+
+    return "\n".join(lines)
 
 
 def format_intervals(intervals_data: dict[str, Any]) -> str:
@@ -534,50 +657,6 @@ Cadence: Avg {group.get("average_cadence", 0)}, Max {group.get("max_cadence", 0)
     return result
 
 
-def format_power_curve(power_data: dict[str, Any]) -> str:
-    """Format power curve (best efforts) data into a readable string.
-
-    Args:
-        power_data: Dictionary containing power curve data from Intervals.icu API.
-            Expected to contain keys like "60", "300", etc. with values for watts and W/kg.
-
-    Returns:
-        A formatted string representation of the power curve data.
-    """
-    result = "Power Curve:\n\n"
-
-    # Standard durations to display, with their labels
-    durations = [
-        ("1", "1s"),
-        ("5", "5s"),
-        ("10", "10s"),
-        ("15", "15s"),
-        ("30", "30s"),
-        ("60", "1m"),
-        ("120", "2m"),
-        ("300", "5m"),
-        ("600", "10m"),
-        ("1200", "20m"),
-        ("3600", "60m"),
-    ]
-
-    result += "Duration | Power (W) | Power (W/kg)\n"
-    result += "----------|-----------|------------\n"
-
-    for seconds, label in durations:
-        if seconds in power_data:
-            entry = power_data[seconds]
-            if isinstance(entry, dict):
-                watts = entry.get("watts", "N/A")
-                watts_kg = entry.get("wkg", "N/A")
-            else:
-                watts = entry
-                watts_kg = "N/A"
-            result += f"{label:8} | {str(watts):9} | {watts_kg}\n"
-
-    return result
-
-
 def format_athlete_settings(settings: dict[str, Any]) -> str:
     """Format athlete settings data into a readable string.
 
@@ -658,3 +737,76 @@ def format_athlete_settings(settings: dict[str, Any]) -> str:
         result += f"Last Updated: {settings['updated']}\n"
 
     return result
+
+
+def _format_duration_label(secs: int) -> str:
+    """Format seconds into a concise human-readable label (e.g. 5s, 2m, 1h)."""
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        mins = secs // 60
+        remainder = secs % 60
+        if remainder:
+            return f"{mins}m{remainder}s"
+        return f"{mins}m"
+    hours = secs // 3600
+    remainder = (secs % 3600) // 60
+    if remainder:
+        return f"{hours}h{remainder}m"
+    return f"{hours}h"
+
+
+def format_power_curves(
+    curves: list[dict[str, Any]],
+    activity_type: str,
+    include_normalised: bool,
+) -> str:
+    """Format extracted power curve data into a concise readable string.
+
+    Args:
+        curves: List of extracted curve data dicts with id, label, data_points.
+        activity_type: The activity type used for the query.
+        include_normalised: Whether W/kg data is included.
+
+    Returns:
+        A formatted string representation of the power curves.
+    """
+    lines: list[str] = [f"Power Curves ({activity_type}):", ""]
+
+    for curve in curves:
+        label = curve.get("label", curve.get("id", "Unknown"))
+        start = curve.get("start", "")
+        end = curve.get("end", "")
+        date_range = ""
+        if start and end:
+            # Trim time portion if present
+            start_short = start[:10] if len(start) > 10 else start
+            end_short = end[:10] if len(end) > 10 else end
+            date_range = f" ({start_short} to {end_short})"
+
+        lines.append(f"{label}{date_range}:")
+
+        data_points = curve.get("data_points", [])
+        if not data_points:
+            lines.append("  No data available for requested durations.")
+            lines.append("")
+            continue
+
+        for point in data_points:
+            dur_label = _format_duration_label(point["secs"])
+            watts = point.get("watts")
+            aid = point.get("activity_id", "")
+            parts = [f"  {dur_label}: {watts}W"]
+            if include_normalised and "watts_per_kg" in point:
+                parts.append(f"{point['watts_per_kg']:.2f}W/kg")
+                wkg_aid = point.get("wkg_activity_id", "")
+                if wkg_aid and wkg_aid != aid:
+                    parts.append(f"[{aid}|wkg:{wkg_aid}]")
+                else:
+                    parts.append(f"[{aid}]")
+            else:
+                parts.append(f"[{aid}]")
+            lines.append(" ".join(parts))
+        lines.append("")
+
+    return "\n".join(lines)

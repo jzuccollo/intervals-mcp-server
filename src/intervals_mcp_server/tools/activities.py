@@ -9,7 +9,11 @@ from typing import Any
 
 from intervals_mcp_server.api.client import make_intervals_request
 from intervals_mcp_server.config import get_config
-from intervals_mcp_server.utils.formatting import format_activity_summary, format_intervals
+from intervals_mcp_server.tools.gear import (
+    resolve_gear_for_activity,
+    resolve_gear_for_activities,
+)
+from intervals_mcp_server.utils.formatting import format_activity_message, format_activity_summary, format_intervals
 from intervals_mcp_server.utils.validation import resolve_athlete_id, resolve_date_params
 
 # Import mcp instance from shared module for tool registration
@@ -163,6 +167,11 @@ async def get_activities(  # pylint: disable=too-many-arguments,too-many-return-
     # Limit to requested count
     activities = activities[:limit]
 
+    # Resolve gear names (in-place injection of `_resolved_gear_name`)
+    await resolve_gear_for_activities(
+        activities, athlete_id=athlete_id_to_use, api_key=api_key
+    )
+
     return _format_activities_response(activities, athlete_id_to_use, include_unnamed)
 
 
@@ -189,6 +198,9 @@ async def get_activity_details(activity_id: str, api_key: str | None = None) -> 
     activity_data = result[0] if isinstance(result, list) and result else result
     if not isinstance(activity_data, dict):
         return f"Invalid activity format for activity {activity_id}."
+
+    # Resolve gear name (uses configured athlete_id via ATHLETE_ID env var)
+    await resolve_gear_for_activity(activity_data, api_key=api_key)
 
     # Return a more detailed view of the activity
     detailed_view = format_activity_summary(activity_data)
@@ -315,3 +327,68 @@ async def get_activity_streams(
         streams_summary += "\n"
 
     return streams_summary
+
+
+@mcp.tool()
+async def get_activity_messages(activity_id: str, api_key: str | None = None) -> str:
+    """Get messages (notes/comments) for a specific activity from Intervals.icu
+
+    Args:
+        activity_id: The Intervals.icu activity ID
+        api_key: The Intervals.icu API key (optional, will use API_KEY from .env if not provided)
+    """
+    result = await make_intervals_request(
+        url=f"/activity/{activity_id}/messages",
+        api_key=api_key,
+    )
+
+    if isinstance(result, dict) and "error" in result:
+        error_message = result.get("message", "Unknown error")
+        return f"Error fetching activity messages: {error_message}"
+
+    if not result:
+        return f"No messages found for activity {activity_id}."
+
+    messages = result if isinstance(result, list) else []
+    if not messages:
+        return f"No messages found for activity {activity_id}."
+
+    output = f"Messages for activity {activity_id}:\n\n"
+    for msg in messages:
+        if isinstance(msg, dict):
+            output += format_activity_message(msg) + "\n\n"
+
+    return output
+
+
+@mcp.tool()
+async def add_activity_message(
+    activity_id: str,
+    content: str,
+    api_key: str | None = None,
+) -> str:
+    """Add a message (note/comment) to an activity on Intervals.icu
+
+    Args:
+        activity_id: The Intervals.icu activity ID
+        content: The message text to add
+        api_key: The Intervals.icu API key (optional, will use API_KEY from .env if not provided)
+    """
+    result = await make_intervals_request(
+        url=f"/activity/{activity_id}/messages",
+        api_key=api_key,
+        method="POST",
+        data={"content": content},
+    )
+
+    if isinstance(result, dict) and "error" in result:
+        error_message = result.get("message", "Unknown error")
+        return f"Error adding message to activity: {error_message}"
+
+    if not result or not isinstance(result, dict):
+        return "Error: Unexpected response when adding message."
+
+    msg_id = result.get("id")
+    if msg_id is not None:
+        return f"Successfully added message (ID: {msg_id}) to activity {activity_id}."
+    return f"Message appears to have been added to activity {activity_id}, but no ID was returned. Please verify manually."
