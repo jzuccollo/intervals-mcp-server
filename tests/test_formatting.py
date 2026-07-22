@@ -12,6 +12,7 @@ from intervals_mcp_server.utils.formatting import (
     format_event_summary,
     format_event_details,
     format_intervals,
+    format_intervals_compact,
     format_power_curves,
 )
 from tests.sample_data import INTERVALS_DATA
@@ -209,6 +210,106 @@ def test_format_intervals():
     assert "Strain Score: 72" in result
     assert "W' Component: 15.0 kJ" in result
 
+
+def test_format_intervals_compact():
+    """
+    Test that the compact interval formatter produces a tight per-rep table:
+    one row per interval, execution-relevant columns only, environmental
+    columns dropped, and far smaller than the verbose format.
+    """
+    result = format_intervals_compact(INTERVALS_DATA)
+    verbose = format_intervals(INTERVALS_DATA)
+
+    # Header names the activity and interval count.
+    assert "Intervals (compact): ID i1, 2 intervals" in result
+
+    # One data row per interval, plus header line and the summary line.
+    data_rows = [line for line in result.splitlines() if line and line[0].isdigit()]
+    assert len(data_rows) == 2
+
+    # Both reps and their types are present.
+    assert "work" in result
+    assert "recovery" in result
+
+    # Execution-relevant columns are present...
+    for header in ("elapsed_s", "moving_s", "avgW", "cad", "ssCP", "decouple"):
+        assert header in result
+    # ...and per-rep values carried through (avg power for both reps).
+    assert "200" in result
+    assert "120" in result
+
+    # Environmental columns that are null on every interval are dropped entirely.
+    for absent in ("temp", "wind", "smo2"):
+        assert absent not in result.lower()
+
+    # Fragmentation is legible: recovery rep has elapsed 67 vs moving 60.
+    assert "67" in result and "60" in result
+
+    # Compact output is dramatically smaller than the verbose format.
+    assert len(result) < len(verbose) / 4
+
+
+def test_format_intervals_compact_empty():
+    """Compact formatter handles an activity with no individual intervals."""
+    result = format_intervals_compact({"id": "i2", "icu_intervals": []})
+    assert "Intervals (compact): ID i2, 0 intervals" in result
+    assert "No individual intervals." in result
+
+
+def test_format_intervals_compact_groups_only():
+    """A groups-only activity points the reader at the full format rather than showing nothing."""
+    result = format_intervals_compact(
+        {"id": "i3", "icu_intervals": [], "icu_groups": [{"id": "g1"}, {"id": "g2"}]}
+    )
+    assert "2 interval group(s) present" in result
+    assert 'detail="full"' in result
+
+
+def test_format_intervals_compact_partial_column_and_rounding():
+    """
+    A column present on some-but-not-all intervals must render a placeholder (not an
+    empty cell) so every row keeps the same cell count, and precision-0 columns must
+    round a float down to a bare integer.
+    """
+    data = {
+        "id": "i4",
+        "icu_intervals": [
+            {
+                "type": "work",
+                "elapsed_time": 240,
+                "moving_time": 240,
+                "average_watts": 300,
+                "average_cadence": 96.29,  # precision-0 → "96"
+                "decoupling": 5.0,
+            },
+            {
+                "type": "work",
+                "elapsed_time": 240,
+                "moving_time": 240,
+                "average_watts": 305,
+                "average_cadence": 94.8,  # precision-0 → "95"
+                # decoupling deliberately absent on this interval
+            },
+        ],
+    }
+    result = format_intervals_compact(data)
+    lines = [ln for ln in result.splitlines() if ln and ln[0].isdigit()]
+    assert len(lines) == 2
+
+    # Every data row has the same number of whitespace-delimited cells as the header.
+    header_line = [ln for ln in result.splitlines() if ln.startswith("#")][0]
+    n_cols = len(header_line.split())
+    for ln in lines:
+        assert len(ln.split()) == n_cols
+
+    # The interval missing `decoupling` (the last active column) renders the
+    # placeholder, not a blank that would collapse and misalign the row.
+    assert lines[1].split()[-1] == "-"
+
+    # precision-0 cadence rounds a float to a bare integer (no decimal point).
+    assert "96" in lines[0].split()
+    assert "95" in lines[1].split()
+    assert "96.29" not in result
 
 
 def test_format_power_curves():

@@ -31,7 +31,34 @@ INTERVALS_DATA = {
             "ss_cp": 55,
             "ss_w_prime": 15.0,  # API returns in kJ, not joules
             "ss_p_max": 18,
-        }
+            "wbal_end": 18000,
+            "decoupling": 2.5,
+            # Environmental fields that are null on indoor rides — the compact
+            # formatter must drop these columns entirely rather than print zeros.
+            "average_temp": None,
+            "average_wind_speed": None,
+            "average_smo2": None,
+        },
+        {
+            "type": "recovery",
+            "label": "Recovery 1",
+            "elapsed_time": 67,  # elapsed > moving by 7s → fragmented (paused mid-rep)
+            "moving_time": 60,
+            "distance": 90,
+            "average_watts": 120,
+            "max_watts": 180,
+            "average_heartrate": 140,
+            "max_heartrate": 150,
+            "average_cadence": 85,
+            "ss_cp": 20,
+            "ss_w_prime": 5.0,
+            "ss_p_max": 4,
+            "wbal_end": 17000,
+            "decoupling": 1.0,
+            "average_temp": None,
+            "average_wind_speed": None,
+            "average_smo2": None,
+        },
     ],
 }
 

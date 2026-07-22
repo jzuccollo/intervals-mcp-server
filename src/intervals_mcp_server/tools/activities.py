@@ -13,7 +13,12 @@ from intervals_mcp_server.tools.gear import (
     resolve_gear_for_activity,
     resolve_gear_for_activities,
 )
-from intervals_mcp_server.utils.formatting import format_activity_message, format_activity_summary, format_intervals
+from intervals_mcp_server.utils.formatting import (
+    format_activity_message,
+    format_activity_summary,
+    format_intervals,
+    format_intervals_compact,
+)
 from intervals_mcp_server.utils.validation import resolve_athlete_id, resolve_date_params
 
 # Import mcp instance from shared module for tool registration
@@ -220,15 +225,24 @@ async def get_activity_details(activity_id: str, api_key: str | None = None) -> 
 
 
 @mcp.tool()
-async def get_activity_intervals(activity_id: str, api_key: str | None = None) -> str:
+async def get_activity_intervals(
+    activity_id: str, api_key: str | None = None, detail: str = "compact"
+) -> str:
     """Get interval data for a specific activity from Intervals.icu
 
     This endpoint returns detailed metrics for each interval in an activity, including power, heart rate,
     cadence, speed, and environmental data. It also includes grouped intervals if applicable.
 
     Args:
-        activity_id: The Intervals.icu activity ID
+        activity_id: The Intervals.icu activity ID (canonical "i"-prefixed form,
+            e.g. "i167747480" — the numeric-only form is not accepted by the API).
         api_key: The Intervals.icu API key (optional, will use API_KEY from .env if not provided)
+        detail: Output verbosity. "compact" (default) returns a one-row-per-interval table
+            with just the execution-compliance fields (duration, power, HR, cadence, per-rep
+            strain, W'bal, decoupling) — roughly an order of magnitude fewer tokens, and the
+            right choice for checking how a structured session was executed. "full" returns
+            every available field per interval plus interval groups. Prefer "compact" unless
+            you specifically need the environmental/physiological fields.
     """
     # Call the Intervals.icu API
     result = await make_intervals_request(url=f"/activity/{activity_id}/intervals", api_key=api_key)
@@ -248,7 +262,9 @@ async def get_activity_intervals(activity_id: str, api_key: str | None = None) -
         return f"No interval data or unrecognized format for activity {activity_id}."
 
     # Format the intervals data
-    return format_intervals(result)
+    if detail == "full":
+        return format_intervals(result)
+    return format_intervals_compact(result)
 
 
 @mcp.tool()

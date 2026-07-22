@@ -251,7 +251,7 @@ Once the server is running and Claude Desktop is configured, you can use the fol
 
 - `get_activities`: Retrieve a list of activities
 - `get_activity_details`: Get detailed information for a specific activity
-- `get_activity_intervals`: Get detailed interval data for a specific activity
+- `get_activity_intervals`: Get interval data for a specific activity. **Note:** as of this fork the default output is a compact per-rep table (`detail="compact"`), a change from the previous full-detail default — pass `detail="full"` for every field per interval plus interval groups.
 - `get_activity_streams`: Get raw data streams (power, heart rate, etc.) for a specific activity
 - `get_athlete_power_curves`: Get best power output curves for selected durations and time periods
 - `get_wellness_data`: Fetch wellness data

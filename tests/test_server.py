@@ -230,7 +230,7 @@ def test_get_wellness_data_include_all_fields(monkeypatch):
 
 def test_get_activity_intervals(monkeypatch):
     """
-    Test get_activity_intervals returns a formatted string with interval analysis for a given activity.
+    Test get_activity_intervals defaults to the compact table and honours detail="full".
     """
 
     async def fake_request(*_args, **_kwargs):
@@ -241,9 +241,19 @@ def test_get_activity_intervals(monkeypatch):
     monkeypatch.setattr(
         "intervals_mcp_server.tools.activities.make_intervals_request", fake_request
     )
-    result = asyncio.run(get_activity_intervals("123"))
-    assert "Intervals Analysis:" in result
-    assert "Rep 1" in result
+
+    # Default is the compact table.
+    default_result = asyncio.run(get_activity_intervals("123"))
+    assert "Intervals (compact):" in default_result
+    assert "Intervals Analysis:" not in default_result
+
+    # Opt in to the verbose format explicitly.
+    full_result = asyncio.run(get_activity_intervals("123", detail="full"))
+    assert "Intervals Analysis:" in full_result
+    assert "Rep 1" in full_result
+
+    # Compact is materially smaller than full.
+    assert len(default_result) < len(full_result)
 
 
 def test_get_activity_streams(monkeypatch):

@@ -657,6 +657,102 @@ Cadence: Avg {group.get("average_cadence", 0)}, Max {group.get("max_cadence", 0)
     return result
 
 
+# Compact interval columns: (source key, header label, rounding precision or None).
+# Curated for interval-execution compliance analysis — the fields a coach needs to
+# check duration, fragmentation, power in-band, fade, cadence decay, and per-rep
+# strain. Deliberately excludes the ~55 environmental/physiological fields that are
+# null or zero on indoor rides (SmO2, THb, lactate, wind, gradient, DFA α1, …), which
+# dominate the verbose format's token cost. Groups are omitted entirely — they zero
+# the ss_* fields and average away the rep-to-rep variation this analysis needs.
+_COMPACT_INTERVAL_COLUMNS: list[tuple[str, str, int | None]] = [
+    ("type", "type", None),
+    ("label", "label", None),
+    ("elapsed_time", "elapsed_s", None),
+    ("moving_time", "moving_s", None),
+    ("average_watts", "avgW", None),
+    ("max_watts", "maxW", None),
+    ("average_heartrate", "avgHR", None),
+    ("max_heartrate", "maxHR", None),
+    ("average_cadence", "cad", 0),
+    ("ss_cp", "ssCP", 1),
+    ("ss_w_prime", "ssW_kJ", 1),
+    ("ss_p_max", "ssPmax", 3),
+    ("wbal_end", "wbalEnd", 0),
+    ("decoupling", "decouple", 1),
+]
+
+
+# Placeholder for a column that is present on some intervals but absent on this one.
+# A literal token (not an empty string) is required so the whitespace-delimited table
+# keeps a fixed cell count per row — an empty cell collapses under "  ".join and shifts
+# every following value under the wrong column header for a reader parsing by position.
+_COMPACT_MISSING = "-"
+
+
+def _compact_cell(value: Any, precision: int | None) -> str:
+    """Render a single compact-table cell, rounding numerics to the given precision."""
+    if value is None:
+        return _COMPACT_MISSING
+    if precision is not None:
+        try:
+            rounded = round(float(value), precision)
+            return str(int(rounded)) if precision == 0 else str(rounded)
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
+
+def format_intervals_compact(intervals_data: dict[str, Any]) -> str:
+    """Format interval data as a compact per-rep table for execution-compliance analysis.
+
+    Emits one row per interval with only the fields a coach needs to assess how a
+    structured session was executed. Columns with no data across every interval are
+    dropped, so indoor rides (no wind/temp/SmO2) degrade to a tight table automatically.
+    Interval groups are omitted. Roughly an order of magnitude smaller than
+    ``format_intervals`` for a typical structured session.
+
+    Args:
+        intervals_data: The intervals data from the Intervals.icu API.
+
+    Returns:
+        A compact string table of the individual intervals.
+    """
+    intervals = intervals_data.get("icu_intervals") or []
+    header = (
+        f"Intervals (compact): ID {intervals_data.get('id', 'N/A')}, "
+        f"{len(intervals)} intervals\n"
+    )
+
+    if not intervals:
+        # No per-interval rows. If the activity only has grouped intervals, say so and
+        # point at the verbose format rather than silently returning nothing usable.
+        groups = intervals_data.get("icu_groups") or []
+        if groups:
+            return (
+                header
+                + f"No individual intervals, but {len(groups)} interval group(s) present. "
+                + 'Call with detail="full" to see grouped data.'
+            )
+        return header + "No individual intervals."
+
+    # Keep only columns that have at least one non-None value across all intervals.
+    active_columns = [
+        (key, label, precision)
+        for key, label, precision in _COMPACT_INTERVAL_COLUMNS
+        if any(interval.get(key) is not None for interval in intervals)
+    ]
+
+    lines = [header, "  ".join(["#"] + [label for _key, label, _p in active_columns])]
+    for index, interval in enumerate(intervals, 1):
+        cells = [str(index)] + [
+            _compact_cell(interval.get(key), precision)
+            for key, _label, precision in active_columns
+        ]
+        lines.append("  ".join(cells))
+
+    return "\n".join(lines)
+
+
 def format_athlete_settings(settings: dict[str, Any]) -> str:
     """Format athlete settings data into a readable string.
 
