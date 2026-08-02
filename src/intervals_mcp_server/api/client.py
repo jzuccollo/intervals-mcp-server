@@ -14,7 +14,7 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx  # pylint: disable=import-error
-from mcp.server.fastmcp import FastMCP  # pylint: disable=import-error
+from mcp.server.mcpserver import MCPServer as FastMCP  # pylint: disable=import-error
 
 from intervals_mcp_server.config import get_config
 
